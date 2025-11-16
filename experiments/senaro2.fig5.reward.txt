@@ -1,0 +1,91 @@
+# نصب کتابخانه‌های لازم
+!pip install matplotlib
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# داده‌های جدول 7
+experiments = [
+    {'latency': 90, 'cost': 0.17, 'QoS': 66, 'utilization': 75},
+    {'latency': 88, 'cost': 0.16, 'QoS': 63, 'utilization': 78},
+    {'latency': 92, 'cost': 0.18, 'QoS': 67, 'utilization': 74},
+    {'latency': 87, 'cost': 0.15, 'QoS': 70, 'utilization': 80},
+    {'latency': 89, 'cost': 0.17, 'QoS': 64, 'utilization': 76},
+    {'latency': 91, 'cost': 0.16, 'QoS': 68, 'utilization': 73},
+    {'latency': 86, 'cost': 0.15, 'QoS': 71, 'utilization': 79},
+    {'latency': 85, 'cost': 0.14, 'QoS': 72, 'utilization': 82},
+]
+
+# حداقل و حداکثر مقادیر برای نرمال‌سازی
+min_latency = 80
+max_latency = 100
+min_cost = 0.15
+max_cost = 0.50
+min_QoS = 40
+max_QoS = 70
+min_utilization = 60
+max_utilization = 80
+
+# تعریف شبکه‌های سیاست و ارزش
+class PolicyNetwork:
+    def __init__(self):
+        self.parameters = np.random.rand()  # مقداردهی اولیه پارامترها
+
+    def predict_action(self, state):
+        # پیش‌بینی اقدام بر اساس وضعیت
+        return np.random.choice([0, 1])  # فقط یک انتخاب تصادفی به عنوان نمونه
+
+class ValueNetwork:
+    def __init__(self):
+        self.parameters = np.random.rand()  # مقداردهی اولیه پارامترها
+
+    def estimate_return(self, state):
+        # برآورد بازگشت بر اساس وضعیت
+        return np.random.rand()  # فقط یک مقدار تصادفی به عنوان نمونه
+
+# محاسبه پاداش
+def calculate_reward(latency, cost, QoS, utilization):
+    R = (
+        (min_latency - latency) / (max_latency - min_latency) +
+        (min_cost - cost) / (max_cost - min_cost) +
+        (QoS - min_QoS) / (max_QoS - min_QoS) +
+        (utilization - min_utilization) / (max_utilization - min_utilization)
+    )
+    return R
+
+# حلقه MAPE
+def MAPE_loop(experiments):
+    rewards = []
+    policy_network = PolicyNetwork()
+    value_network = ValueNetwork()
+
+    for exp in experiments:
+        # Monitor
+        latency = exp['latency']
+        cost = exp['cost']
+        QoS = exp['QoS']
+        utilization = exp['utilization']
+
+        # Analyze
+        reward = calculate_reward(latency, cost, QoS, utilization)
+        rewards.append(reward)
+
+        # Plan (در اینجا می‌توانیم تصمیمات بهینه‌سازی حافظه را انجام دهیم)
+        action = policy_network.predict_action(None)  # وضعیت به عنوان ورودی
+
+        print(f"Latency: {latency}, Cost: {cost}, QoS: {QoS}, Utilization: {utilization}, Reward: {reward}, Action: {action}")
+
+    return rewards
+
+# اجرای حلقه MAPE
+rewards = MAPE_loop(experiments)
+
+# ترسیم نمودار پاداش
+plt.figure(figsize=(10, 6))
+plt.plot(rewards, marker='o', color='blue')
+plt.title('Rewards Over Experiments')
+plt.xlabel('Experiment Number')
+plt.ylabel('Reward')
+plt.xticks(ticks=range(len(rewards)), labels=[f'Exp {i+1}' for i in range(len(rewards))])
+plt.grid()
+plt.show()

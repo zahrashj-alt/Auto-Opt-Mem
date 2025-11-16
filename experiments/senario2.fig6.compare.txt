@@ -1,0 +1,68 @@
+import matplotlib.pyplot as plt
+
+# داده‌های آزمایشات، هزینه، کیفیت سرویس، استفاده، تأخیر و پاداش
+experiments = [1, 2, 3, 4, 5, 6, 7, 8]
+cost = [0.17, 0.16, 0.18, 0.15, 0.17, 0.16, 0.15, 0.14]
+qos = [66, 63, 67, 70, 64, 68, 71, 72]
+utilization = [75, 78, 74, 80, 76, 73, 79, 82]
+latency = [90, 88, 92, 87, 89, 91, 86, 85]  # مقادیر تأخیر به میلی‌ثانیه
+rewards = [0.1167, 0.4333, 0.8, 0.65, 0.2167, 0.0333, 0.65, 0.9167]
+
+# ایجاد یک شکل با 4 زیرنمودار
+fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+
+# نمودار هزینه و پاداش
+ax1 = axs[0, 0]
+ax1.plot(experiments, cost, marker='o', color='tab:orange', label='Cost')
+ax1.set_xlabel('Experiment Number')
+ax1.set_ylabel('Cost ($)', color='tab:orange')
+ax1.tick_params(axis='y', labelcolor='tab:orange')
+ax1.set_title('Comparison of Cost and Reward')
+ax1.grid()
+ax2 = ax1.twinx()
+ax2.plot(experiments, rewards, marker='o', color='tab:blue', label='Reward')
+ax2.set_ylabel('Reward', color='tab:blue')
+ax2.tick_params(axis='y', labelcolor='tab:blue')
+
+# نمودار QoS و پاداش
+ax1 = axs[0, 1]
+ax1.plot(experiments, qos, marker='o', color='tab:green', label='QoS')
+ax1.set_xlabel('Experiment Number')
+ax1.set_ylabel('Quality of Service (%)', color='tab:green')
+ax1.tick_params(axis='y', labelcolor='tab:green')
+ax1.set_title('Comparison of QoS and Reward')
+ax1.grid()
+ax2 = ax1.twinx()
+ax2.plot(experiments, rewards, marker='o', color='tab:blue', label='Reward')
+ax2.set_ylabel('Reward', color='tab:blue')
+ax2.tick_params(axis='y', labelcolor='tab:blue')
+
+# نمودار استفاده و پاداش
+ax1 = axs[1, 0]
+ax1.plot(experiments, utilization, marker='o', color='tab:purple', label='Utilization')
+ax1.set_xlabel('Experiment Number')
+ax1.set_ylabel('Utilization (%)', color='tab:purple')
+ax1.tick_params(axis='y', labelcolor='tab:purple')
+ax1.set_title('Comparison of Utilization and Reward')
+ax1.grid()
+ax2 = ax1.twinx()
+ax2.plot(experiments, rewards, marker='o', color='tab:blue', label='Reward')
+ax2.set_ylabel('Reward', color='tab:blue')
+ax2.tick_params(axis='y', labelcolor='tab:blue')
+
+# نمودار تأخیر و پاداش
+ax1 = axs[1, 1]
+ax1.plot(experiments, latency, marker='o', color='tab:red', label='Latency')
+ax1.set_xlabel('Experiment Number')
+ax1.set_ylabel('Latency (ms)', color='tab:red')
+ax1.tick_params(axis='y', labelcolor='tab:red')
+ax1.set_title('Comparison of Latency and Reward')
+ax1.grid()
+ax2 = ax1.twinx()
+ax2.plot(experiments, rewards, marker='o', color='tab:blue', label='Reward')
+ax2.set_ylabel('Reward', color='tab:blue')
+ax2.tick_params(axis='y', labelcolor='tab:blue')
+
+# تنظیمات نهایی
+plt.tight_layout()
+plt.show()

@@ -1,0 +1,54 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Improvement values (%)
+labels = ['Latency Reduction', 'Cost Reduction', 'QoS Improvement']
+
+auto_vs_sizeless = [28, 16, 11]
+auto_vs_fn = [6, 7, 2.5]
+
+x = np.arange(len(labels))
+width = 0.35
+
+plt.rcParams.update({
+    'font.size': 14,
+    'axes.titlesize': 18,
+    'axes.labelsize': 18,
+    'xtick.labelsize': 14,
+    'ytick.labelsize': 14,
+    'legend.fontsize': 14
+})
+
+fig, ax = plt.subplots(figsize=(10, 7), dpi=600)
+
+rects1 = ax.bar(x - width/2, auto_vs_sizeless, width,
+                label='Auto Opt Mem vs Sizeless',
+                color='steelblue')
+rects2 = ax.bar(x + width/2, auto_vs_fn, width,
+                label='Auto Opt Mem vs FnCapacitor',
+                color='darkorange')
+
+# Labels and title (all text forced to black)
+ax.set_ylabel('Improvement (%)', color='black')
+ax.set_title('Improvement Comparison of Auto Opt Mem', color='black')
+ax.set_xticks(x)
+ax.set_xticklabels(labels, color='black')
+ax.tick_params(axis='y', colors='black')
+ax.legend(facecolor='white', edgecolor='black')
+
+# Grid for readability
+ax.grid(axis='y', linestyle='--', alpha=0.4)
+
+# Add value labels above bars (black text)
+for rects in [rects1, rects2]:
+    for r in rects:
+        height = r.get_height()
+        ax.annotate(f'{height:.1f}%',
+                    xy=(r.get_x() + r.get_width()/2, height),
+                    xytext=(0, 1),
+                    textcoords="offset points",
+                    ha='center', va='bottom',
+                    color='black')   # <-- main fix
+
+plt.tight_layout()
+plt.show()

@@ -1,0 +1,209 @@
+# -*- coding: utf-8 -*-
+# شبیه سازی RL با حلقه MAPE و آزمون نرخ یادگیری
+# اجرا در Google Colab
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+np.random.seed(42)
+
+# --- محیط شبیه‌ساز ---
+MEMORY_OPTIONS = np.array([128, 256, 512, 1024, 2048], dtype=np.float32)
+
+def env_step(memory_mb):
+    m = memory_mb
+    latency = 140.0 * (1.0 / (1.0 + 0.002 * m))
+    cost = 0.00015 * m + 0.00005 * max(0, (latency - 50)) / 100.0
+    util = 40 + 40 * np.exp(-((m - 512)/400.0)**2)
+    availability = 0.98 + 0.01 * (m / 2048.0)
+    qos = (1.0 / (1.0 + latency/100.0)) * 100.0 * availability
+    # نویز
+    latency = latency * (1.0 + np.random.normal(0, 0.03))
+    cost = max(0.01, cost * (1.0 + np.random.normal(0, 0.05)))
+    util = np.clip(util * (1.0 + np.random.normal(0, 0.03)), 10, 100)
+    qos = np.clip(qos * (1.0 + np.random.normal(0, 0.02)), 0, 100)
+    return latency, cost, qos, util
+
+# محدوده‌های نرمال‌سازی
+L_min, L_max = 80.0, 140.0
+C_min, C_max = 0.01, 0.5
+U_min, U_max = 10.0, 100.0
+Q_min, Q_max = 0.0, 100.0
+
+def normalized_reward(latency, cost, util, qos, alpha=1.0, beta=1.0, gamma=1.0, delta=1.0):
+    def norm(x, xmin, xmax):
+        return (x - xmin) / (xmax - xmin + 1e-9)
+    Lp = norm(latency, L_min, L_max)
+    Cp = norm(cost, C_min, C_max)
+    Up = norm(util, U_min, U_max)
+    Qp = norm(qos, Q_min, Q_max)
+    return -alpha*Lp - beta*Cp + gamma*Up + delta*Qp
+
+# --- شبکه سیاست ---
+class PolicyNet:
+    def __init__(self, input_dim, hidden=24, n_actions=5):
+        self.W1 = np.random.randn(input_dim, hidden) * 0.05
+        self.b1 = np.zeros(hidden)
+        self.W2 = np.random.randn(hidden, n_actions) * 0.05
+        self.b2 = np.zeros(n_actions)
+    def forward(self, x):
+        z = np.tanh(np.dot(x, self.W1) + self.b1)
+        logits = np.dot(z, self.W2) + self.b2
+        logits = logits - np.max(logits)  # پایداری
+        exp = np.exp(np.clip(logits, -50, 50))
+        probs = exp / (np.sum(exp) + 1e-9)
+        if np.any(np.isnan(probs)):
+            probs = np.ones_like(probs) / len(probs)
+        return probs, z
+    def get_action(self, state):
+        probs, z = self.forward(state)
+        action = int(np.random.choice(len(probs), p=probs))
+        return action, probs, z
+
+# --- شبکه ارزش ---
+class ValueNet:
+    def __init__(self, input_dim, hidden=24):
+        self.W1 = np.random.randn(input_dim, hidden) * 0.05
+        self.b1 = np.zeros(hidden)
+        self.W2 = np.random.randn(hidden) * 0.05
+        self.b2 = 0.0
+    def predict(self, x):
+        z = np.tanh(np.dot(x, self.W1) + self.b1)
+        v = np.dot(z, self.W2) + self.b2
+        return v, z
+
+# --- حلقه یادگیری ---
+def run_experiment(lr, n_episodes=100, episode_length=40, grad_clip=5.0):
+    pnet = PolicyNet(input_dim=5)
+    vnet = ValueNet(input_dim=5)
+    history = {'latency': [], 'cost': [], 'qos': [], 'util': [], 'reward': []}
+
+    for ep in range(n_episodes):
+        states, actions, probs_list, zs = [], [], [], []
+        rewards, values = [], []
+
+        last_memory = MEMORY_OPTIONS[2]
+        last_latency, last_cost, last_qos, last_util = env_step(last_memory)
+
+        for t in range(episode_length):
+            def nval(x, xmin, xmax): return (x - xmin) / (xmax - xmin + 1e-9)
+            state = np.array([
+                nval(last_memory, MEMORY_OPTIONS.min(), MEMORY_OPTIONS.max()),
+                nval(last_latency, L_min, L_max),
+                nval(last_cost, C_min, C_max),
+                nval(last_util, U_min, U_max),
+                nval(last_qos, Q_min, Q_max)
+            ], dtype=np.float32)
+
+            action, probs, z = pnet.get_action(state)
+            mem = MEMORY_OPTIONS[action]
+            latency, cost, qos, util = env_step(mem)
+            r = normalized_reward(latency, cost, util, qos)
+
+            states.append(state); actions.append(action); probs_list.append(probs); zs.append(z)
+            rewards.append(r)
+            v_pred, vz = vnet.predict(state)
+            values.append(v_pred)
+
+            last_memory, last_latency, last_cost, last_qos, last_util = mem, latency, cost, qos, util
+
+        # محاسبه G و A
+        returns, G = [], 0.0
+        gamma = 0.99
+        for r in rewards[::-1]:
+            G = r + gamma * G
+            returns.insert(0, G)
+        returns = np.array(returns, dtype=np.float32)
+        values = np.array(values, dtype=np.float32)
+        advantages = returns - values
+
+        # گرادیان
+        dW2 = np.zeros_like(pnet.W2); db2 = np.zeros_like(pnet.b2)
+        dW1 = np.zeros_like(pnet.W1); db1 = np.zeros_like(pnet.b1)
+        dV_W2 = np.zeros_like(vnet.W2); dV_b2 = 0.0
+        dV_W1 = np.zeros_like(vnet.W1); dV_b1 = np.zeros_like(vnet.b1)
+
+        for i in range(len(states)):
+            s = states[i]; action = actions[i]; probs = probs_list[i]; z = zs[i]
+            grad_logits = np.zeros_like(probs); grad_logits[action] = 1.0; grad_logits = grad_logits - probs
+            grad_logits = grad_logits * advantages[i]
+            grad_logits = np.clip(grad_logits, -grad_clip, grad_clip)
+            dW2 += np.outer(z, grad_logits); db2 += grad_logits
+            dz = np.dot(pnet.W2, grad_logits) * (1 - z**2)
+            dz = np.clip(dz, -grad_clip, grad_clip)
+            dW1 += np.outer(s, dz); db1 += dz
+
+            v_pred, vz = vnet.predict(s)
+            err = (returns[i] - v_pred)
+            dV_W2 += vz * err; dV_b2 += err
+            dvz = vnet.W2 * err; dv = dvz * (1 - vz**2)
+            dV_W1 += np.outer(s, dv); dV_b1 += dv
+
+        # آپدیت
+        pnet.W2 += lr * dW2; pnet.b2 += lr * db2
+        pnet.W1 += lr * dW1; pnet.b1 += lr * db1
+        vnet.W2 += 0.5 * lr * dV_W2; vnet.b2 += 0.5 * lr * dV_b2
+        vnet.W1 += 0.5 * lr * dV_W1; vnet.b1 += 0.5 * lr * dV_b1
+
+        # ذخیره
+        avg_latency = np.mean([env_step(MEMORY_OPTIONS[a])[0] for a in actions])
+        avg_cost = np.mean([env_step(MEMORY_OPTIONS[a])[1] for a in actions])
+        avg_qos = np.mean([env_step(MEMORY_OPTIONS[a])[2] for a in actions])
+        avg_util = np.mean([env_step(MEMORY_OPTIONS[a])[3] for a in actions])
+        avg_reward = np.mean(rewards)
+
+        history['latency'].append(avg_latency)
+        history['cost'].append(avg_cost)
+        history['qos'].append(avg_qos)
+        history['util'].append(avg_util)
+        history['reward'].append(avg_reward)
+
+    return history
+
+# --- اجرای آزمایش‌ها ---
+learning_rates = [0.01, 0.001, 0.0001]
+all_hist = {}
+for lr in learning_rates:
+    print(f"Running experiment for lr={lr} ...")
+    hist = run_experiment(lr, n_episodes=100, episode_length=40, grad_clip=8.0)
+    all_hist[lr] = hist
+
+# --- رسم نمودارها با خطوط بولد و متن بزرگ‌تر ---
+def smooth(x, w=5): return np.convolve(x, np.ones(w)/w, mode='same')
+
+plt.rcParams.update({'font.size': 22})
+fig, axes = plt.subplots(2, 2, figsize=(18, 14), dpi=300)
+ax = axes.flatten()
+episodes = np.arange(1, 101)
+
+for lr in learning_rates:
+    hist = all_hist[lr]
+    ax[0].plot(episodes, smooth(hist['latency']), label=f"lr={LR}", linewidth=4.0)
+    ax[1].plot(episodes, smooth(hist['cost']), label=f"lr={lr}", linewidth=4.0)
+    ax[2].plot(episodes, smooth(hist['qos']), label=f"lr={lr}", linewidth=4.0)
+    ax[3].plot(episodes, smooth(hist['util']), label=f"lr={lr}", linewidth=4.0)
+
+titles = ["Latency (ms)", "Cost ($)", "QoS (%)", "Utilization (%)"]
+ylabs  = ["Latency (ms)", "Cost ($)", "QoS (%)", "Utilization (%)"]
+
+for i in range(4):
+    ax[i].set_title(titles[i], fontsize=28)          # بزرگ‌تر
+    ax[i].set_xlabel("Episode", fontsize=24)         # بزرگ‌تر
+    ax[i].set_ylabel(ylabs[i], fontsize=24)          # بزرگ‌تر
+    ax[i].grid(True)
+    ax[i].legend(fontsize=20)
+    for label in (ax[i].get_xticklabels() + ax[i].get_yticklabels()):
+        label.set_fontsize(20)                       # بزرگ‌تر (بدون bold)
+
+plt.tight_layout()
+plt.show()
+
+# --- چاپ نتایج نهایی ---
+print("\nFinal average metrics per learning rate (last 10 episodes mean):")
+for lr in learning_rates:
+    hist = all_hist[lr]
+    tail = slice(-10, None)
+    print(f"lr={lr}: Latency={np.mean(hist['latency'][tail]):.1f} ms, "
+          f"Cost=${np.mean(hist['cost'][tail]):.3f}, "
+          f"QoS={np.mean(hist['qos'][tail]):.1f}%, "
+          f"Util={np.mean(hist['util'][tail]):.1f}%")
