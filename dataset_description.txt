@@ -1,0 +1,17 @@
+1. Table7 - Reward function values for eight experiments.
+   Columns:
+   - Experiment ID
+   - Latency (ms)
+   - Cost ($)
+   - QoS (%)
+   - Utilization (%)
+   - Reward (normalized multi-objective function)
+
+2. Table9 - Comparison of Auto Opt Mem with Sizeless [17] and FnCapacitor [18].
+   For each approach, eight experimental values are included for:
+   - Latency (ms)
+   - Cost ($)
+   - QoS (%)
+
+These datasets are simulated and were generated directly from experimental tables in the research paper.
+They support reproducibility and sharing on GitHub as supplementary datasets.
